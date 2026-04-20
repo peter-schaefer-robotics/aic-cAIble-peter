@@ -1,5 +1,9 @@
 # Aufgabenverteilung – AIC Team
 
+## Niklas & Ken – Springer
+
+Teilt euch gerne dazu wo ihr bock drauf habt
+
 ---
 
 ## Richard & Paul – FoundationPose
@@ -40,7 +44,7 @@ Synthetische Tiefeninformation aus dem monokularen RGB-Kamerabild der Simulation
 
 ---
 
-## Bernhard – Task Description / Port-Erkennung
+## Peter & Bernhard – Task Description / Port-Erkennung (Orchestrator)
 
 **Ziel:**
 Den richtigen Ziel-Port in der Szene identifizieren basierend auf dem Action Goal der Engine, und diese Information als Eingabe für die Greifplanung bereitstellen.
