@@ -1,0 +1,32 @@
+foundationpose_node:
+  ros__parameters:
+    # Which Basler camera to use (left_camera / center_camera / right_camera)
+    camera_name: center_camera
+
+    # Absolute path to the converted NIC Card OBJ mesh
+    # Run: ros2 run aic_foundationpose convert_nic_mesh  to generate it
+    mesh_path: /home/richard/aic/aic_foundationpose/meshes/nic_card.obj
+
+    # Absolute path to the cloned FoundationPose repository
+    # git clone https://github.com/NVlabs/FoundationPose.git ~/FoundationPose
+    foundationpose_dir: /home/richard/FoundationPose
+
+    # Depth-Anything-V2 Metric model (HuggingFace model ID)
+    # Alternatives: Depth-Anything-V2-Metric-Indoor-Small-hf  (faster, less accurate)
+    depth_model: depth-anything/Depth-Anything-V2-Metric-Indoor-Large-hf
+
+    # FoundationPose iteration counts
+    register_iterations: 5   # higher = more accurate initial pose, slower
+    refine_iterations: 2     # per-frame tracking refinement steps
+
+    # Expected depth range of the NIC card from the camera (metres)
+    # The NIC card sits on the task board ~0.3–0.8 m from the center camera
+    object_depth_min: 0.05
+    object_depth_max: 2.0
+
+    # Whether to broadcast the pose as a TF transform
+    publish_tf: true
+    object_frame: nic_card   # child frame name in TF tree
+
+    # Publish a debug overlay image on /foundationpose/debug_image
+    debug_vis: true

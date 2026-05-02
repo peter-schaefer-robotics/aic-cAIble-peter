@@ -47,6 +47,111 @@
   direction: GZ_TO_ROS
   lazy: true
 
+- ros_topic_name: "/left_camera/segmentation/labels_map"
+  gz_topic_name: "/left_camera/segmentation/labels_map"
+  ros_type_name: "sensor_msgs/msg/Image"
+  gz_type_name: "gz.msgs.Image"
+  direction: GZ_TO_ROS
+  lazy: true
+
+- ros_topic_name: "/left_camera/segmentation/colored_map"
+  gz_topic_name: "/left_camera/segmentation/colored_map"
+  ros_type_name: "sensor_msgs/msg/Image"
+  gz_type_name: "gz.msgs.Image"
+  direction: GZ_TO_ROS
+  lazy: true
+
+- ros_topic_name: "/center_camera/segmentation/labels_map"
+  gz_topic_name: "/center_camera/segmentation/labels_map"
+  ros_type_name: "sensor_msgs/msg/Image"
+  gz_type_name: "gz.msgs.Image"
+  direction: GZ_TO_ROS
+  lazy: true
+
+- ros_topic_name: "/center_camera/segmentation/colored_map"
+  gz_topic_name: "/center_camera/segmentation/colored_map"
+  ros_type_name: "sensor_msgs/msg/Image"
+  gz_type_name: "gz.msgs.Image"
+  direction: GZ_TO_ROS
+  lazy: true
+
+- ros_topic_name: "/right_camera/segmentation/labels_map"
+  gz_topic_name: "/right_camera/segmentation/labels_map"
+  ros_type_name: "sensor_msgs/msg/Image"
+  gz_type_name: "gz.msgs.Image"
+  direction: GZ_TO_ROS
+  lazy: true
+
+- ros_topic_name: "/right_camera/segmentation/colored_map"
+  gz_topic_name: "/right_camera/segmentation/colored_map"
+  ros_type_name: "sensor_msgs/msg/Image"
+  gz_type_name: "gz.msgs.Image"
+  direction: GZ_TO_ROS
+  lazy: true
+
+- ros_topic_name: "/left_camera/bounding_boxes"
+  gz_topic_name: "/left_camera/bounding_boxes"
+  ros_type_name: "vision_msgs/msg/Detection2DArray"
+  gz_type_name: "gz.msgs.AnnotatedAxisAligned2DBox_V"
+  direction: GZ_TO_ROS
+  lazy: true
+
+- ros_topic_name: "/center_camera/bounding_boxes"
+  gz_topic_name: "/center_camera/bounding_boxes"
+  ros_type_name: "vision_msgs/msg/Detection2DArray"
+  gz_type_name: "gz.msgs.AnnotatedAxisAligned2DBox_V"
+  direction: GZ_TO_ROS
+  lazy: true
+
+- ros_topic_name: "/right_camera/bounding_boxes"
+  gz_topic_name: "/right_camera/bounding_boxes"
+  ros_type_name: "vision_msgs/msg/Detection2DArray"
+  gz_type_name: "gz.msgs.AnnotatedAxisAligned2DBox_V"
+  direction: GZ_TO_ROS
+  lazy: true
+
+- ros_topic_name: "/left_camera/depth"
+  gz_topic_name: "/left_camera/depth"
+  ros_type_name: "sensor_msgs/msg/Image"
+  gz_type_name: "gz.msgs.Image"
+  direction: GZ_TO_ROS
+  lazy: true
+
+- ros_topic_name: "/left_camera/depth/camera_info"
+  gz_topic_name: "/left_camera/depth/camera_info"
+  ros_type_name: "sensor_msgs/msg/CameraInfo"
+  gz_type_name: "gz.msgs.CameraInfo"
+  direction: GZ_TO_ROS
+  lazy: true
+
+- ros_topic_name: "/center_camera/depth"
+  gz_topic_name: "/center_camera/depth"
+  ros_type_name: "sensor_msgs/msg/Image"
+  gz_type_name: "gz.msgs.Image"
+  direction: GZ_TO_ROS
+  lazy: true
+
+- ros_topic_name: "/center_camera/depth/camera_info"
+  gz_topic_name: "/center_camera/depth/camera_info"
+  ros_type_name: "sensor_msgs/msg/CameraInfo"
+  gz_type_name: "gz.msgs.CameraInfo"
+  direction: GZ_TO_ROS
+  lazy: true
+
+- ros_topic_name: "/right_camera/depth"
+  gz_topic_name: "/right_camera/depth"
+  ros_type_name: "sensor_msgs/msg/Image"
+  gz_type_name: "gz.msgs.Image"
+  direction: GZ_TO_ROS
+  lazy: true
+
+- ros_topic_name: "/right_camera/depth/camera_info"
+  gz_topic_name: "/right_camera/depth/camera_info"
+  ros_type_name: "sensor_msgs/msg/CameraInfo"
+  gz_type_name: "gz.msgs.CameraInfo"
+  direction: GZ_TO_ROS
+  lazy: true
+
 - ros_topic_name: "/aic/gazebo/contacts/off_limit"
   gz_topic_name: "/aic/gazebo/contacts/off_limit"
   ros_type_name: "ros_gz_interfaces/msg/Contacts"

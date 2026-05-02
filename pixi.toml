@@ -33,11 +33,16 @@ ros-kilted-ros-core = "*"
 ros-kilted-sensor-msgs = "*"                                                           # lerobot_robot_ros
 ros-kilted-std-msgs = "*"                                                              # lerobot_robot_ros
 ros-kilted-std-srvs = "*"
+ros-kilted-vision-msgs = "*"
+scipy = "*"
 ros-kilted-tf2-ros-py = "*"
 setuptools = ">=71.0.0,<81.0.0"                                                        # required by lerobot==0.4.3
 
 [pypi-dependencies]
 huggingface-hub = { version = "~=1.7" }
+timm = ">=1.0.0"
+transformers = ">=4.40.0"
+ultralytics = ">=8.0.0"
 lerobot = "==0.5.1"
 lerobot_robot_ros = { git = "https://github.com/koonpeng/lerobot-ros", rev = "87708d0ae14a724bca78f8ae9d55448332509a57", subdirectory = "lerobot_robot_ros" }
 lerobot_teleoperator_devices = { git = "https://github.com/koonpeng/lerobot-ros", rev = "87708d0ae14a724bca78f8ae9d55448332509a57", subdirectory = "lerobot_teleoperator_devices" }
