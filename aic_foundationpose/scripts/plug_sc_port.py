@@ -30,7 +30,7 @@ _MAGENTA_HIGH = np.array([170, 255, 255])
 import rclpy
 import tf2_ros
 import yaml
-from geometry_msgs.msg import TransformStamped, Wrench, Vector3
+from geometry_msgs.msg import TransformStamped, Wrench, WrenchStamped, Vector3
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data, QoSProfile, ReliabilityPolicy, DurabilityPolicy
 from scipy.spatial.transform import Rotation
@@ -264,6 +264,12 @@ class PlugNode(Node):
         self._pose_pub = self.create_publisher(MotionUpdate,
                                                "/aic_controller/pose_commands", 1)
 
+        self._wrench_latest = None
+        self.create_subscription(WrenchStamped,
+                                 "/fts_broadcaster/wrench",
+                                 lambda m: setattr(self, "_wrench_latest", m.wrench),
+                                 RELIABLE_QOS)
+
     # ── camera callbacks ──────────────────────────────────────────────────────
 
     def _cb_rgb(self, cam, msg):
@@ -446,6 +452,16 @@ class PlugNode(Node):
     # the cable is rigidly attached to the gripper.
     _T_TCP_TIP_TRANSLATION = np.array([-0.000782, -0.010156,  0.008257])
     _T_TCP_TIP_QUAT        = np.array([ 0.160781, -0.167157,  0.694179,  0.681413])  # xyzw
+
+    # Systematic tip→entrance offset calibrated with record_tip_offset.py (2026-05-02).
+    # _TIP_CORRECTION_TIP_FRAME : offset (tip_pos − entrance_pos) expressed in the TIP frame.
+    #   Storing in tip frame makes the correction pose-invariant; it is rotated to
+    #   base_link at runtime using the current tip orientation.
+    #   Empirically the misalignment is almost entirely along the tip X axis.
+    # _TIP_CORRECTION_QUAT : R_entrance⁻¹ · R_tip  (xyzw, positive-w convention)
+    # The entrance target is shifted by −offset so the tip lands at the entrance.
+    _TIP_CORRECTION_TIP_FRAME = np.array([-0.007560,  0.006110,  0.002200])  # tip frame, 9 samples 2026-05-02
+    _TIP_CORRECTION_QUAT      = np.array([-0.000404, -0.000714, -0.035740,  0.999360])  # xyzw
 
     def _find_plug_frame(self) -> str:
         """Always use the hardcoded gripper→tip transform — no ground truth needed."""
@@ -684,6 +700,23 @@ class PlugNode(Node):
         self.get_logger().info(
             f"  target gripper/tcp RPY: {rpy.round(1)} deg")
 
+    def _measure_wrench_bias(self, n: int = 30) -> np.ndarray:
+        """Average n wrench readings at the current pose (no contact) → force bias."""
+        samples = []
+        t0 = time.time()
+        while len(samples) < n and time.time() - t0 < 5.0:
+            self._wrench_latest = None
+            rclpy.spin_once(self, timeout_sec=0.1)
+            if self._wrench_latest is not None:
+                w = self._wrench_latest
+                samples.append([w.force.x, w.force.y, w.force.z])
+        if samples:
+            bias = np.mean(samples, axis=0)
+            self.get_logger().info(f"Wrench bias: {bias.round(3)} N")
+            return bias
+        self.get_logger().warn("No wrench data — bias set to zero")
+        return np.zeros(3)
+
     def _plug_in(self, port_tf: dict, plug_frame: str, model):
         """CheatCode insertion policy driven by YOLO port position."""
         self._ix = 0.0;  self._iy = 0.0   # integrators
@@ -761,30 +794,38 @@ class PlugNode(Node):
         hover_pos   = np.array(target_pose[:3])
         target_quat = np.array(target_pose[3:])   # xyzw (final rotated orientation)
 
-        # Current gripper orientation — approach without rotating yet
+        # Current gripper orientation
         eef_tf0 = lookup_tf(self._tf_buf, EEF_FRAME)
         current_quat = np.array([eef_tf0["rotation"]["x"], eef_tf0["rotation"]["y"],
                                   eef_tf0["rotation"]["z"], eef_tf0["rotation"]["w"]]) \
                        if eef_tf0 else target_quat
 
-        # ── Phase 1: move to hover position — position only, keep current orientation
-        self.get_logger().info("Phase 1: moving to hover (position only, no rotation) …")
-        move_to(hover_pos, current_quat,
+        # Build yaw-only intermediate orientation: keep current roll/pitch, apply target yaw only.
+        # ZYX intrinsic order → [yaw, pitch, roll]
+        yaw_target, _, _            = Rotation.from_quat(target_quat).as_euler("ZYX")
+        _, pitch_curr, roll_curr    = Rotation.from_quat(current_quat).as_euler("ZYX")
+        yaw_only_quat = Rotation.from_euler(
+            "ZYX", [yaw_target, pitch_curr, roll_curr]).as_quat()
+
+        # ── Phase 1: move to hover adjusting only yaw (roll/pitch unchanged) ─
+        self.get_logger().info("Phase 1: moving to hover + adjusting yaw only …")
+        move_to(hover_pos, yaw_only_quat,
                 speed_mps=self.args.speed,
                 stiffness=400.0, damping=80.0,
                 label="approach")
 
-        # ── hold hover firmly until settled ───────────────────────────────────
+        # ── hold hover with yaw-only orientation until settled ────────────────
         self.get_logger().info(f"Holding hover for {self.args.hover_wait:.1f}s …")
         for _ in range(int(self.args.hover_wait / DT)):
             send_pose(self._pose_pub, self.get_clock(),
                       hover_pos[0], hover_pos[1], hover_pos[2],
-                      current_quat[0], current_quat[1],
-                      current_quat[2], current_quat[3],
-                      300.0, 100.0)   # high stiffness to lock position
+                      yaw_only_quat[0], yaw_only_quat[1],
+                      yaw_only_quat[2], yaw_only_quat[3],
+                      300.0, 100.0)
             ros_sleep()
 
-        self.get_logger().info("Re-running YOLO for fresh port position …")
+        # ── yaw is now settled — re-run YOLO for fresh port position ─────────
+        self.get_logger().info("Yaw settled — re-running YOLO for fresh port position …")
         for _ in range(10):   # flush stale camera frames
             rclpy.spin_once(self, timeout_sec=0.05)
         new_detections = self._detect_sc_ports(model)
@@ -802,10 +843,11 @@ class PlugNode(Node):
                 f"conf={best['conf']:.2f}")
             new_entrance = self._find_entrance_pose(best["pos_base"])
             if new_entrance:
-                new_entrance["translation"]["x"] = float(best["pos_base"][0]) + 0.01
+                # No tip correction here — applied at descent
+                new_entrance["translation"]["x"] = float(best["pos_base"][0])
                 new_entrance["translation"]["y"] = float(best["pos_base"][1])
                 port_tf = new_entrance
-                # recompute hover with updated port
+                # recompute hover with updated port (orientation already settled, only pos update)
                 updated = self._calc_gripper_pose(
                     port_tf, plug_frame, z_offset,
                     slerp_frac=1.0, pos_frac=1.0, reset_integrator=True)
@@ -815,12 +857,32 @@ class PlugNode(Node):
         else:
             self.get_logger().warn("Re-detection found nothing — using original position.")
 
-        # ── rotate into final orientation at hover before descending ─────────
-        self.get_logger().info("Rotating gripper into insertion orientation …")
+        # ── rotate into full insertion orientation (roll+pitch+yaw) ──────────
+        self.get_logger().info("Rotating gripper into full insertion orientation …")
         move_to(hover_pos, target_quat,
                 speed_mps=self.args.speed * 0.5,
                 stiffness=300.0, damping=50.0,
                 label="orient")
+
+        # ── Nudge to tip-corrected position before descent ───────────────────
+        plug_tf_c = self._lookup_plug_tf("_synthetic")
+        if plug_tf_c is not None:
+            R_tip_c = Rotation.from_quat([plug_tf_c["rotation"]["x"],
+                                          plug_tf_c["rotation"]["y"],
+                                          plug_tf_c["rotation"]["z"],
+                                          plug_tf_c["rotation"]["w"]])
+            corr_base = R_tip_c.apply(self._TIP_CORRECTION_TIP_FRAME)
+        else:
+            corr_base = self._TIP_CORRECTION_TIP_FRAME
+        hover_pos_corrected = hover_pos - corr_base
+        self.get_logger().info(
+            f"Nudging by tip correction {(corr_base*1000).round(2)} mm …")
+        move_to(hover_pos_corrected, target_quat,
+                speed_mps=self.args.speed * 0.3,
+                stiffness=300.0, damping=50.0,
+                label="tip_correction")
+        hover_pos = hover_pos_corrected
+
         # ── Phase 2: descend into port ───────────────────────────────────────
         # Phase 2: move hover_pos straight down along insertion axis.
         # Do NOT use _calc_gripper_pose — its dynamic plug-offset breaks after rotation.
@@ -885,10 +947,16 @@ class PlugNode(Node):
                     ins_axis)
                 return drop > drop_threshold_m
 
+            # Measure force bias at current pose (gravity + cable, pre-contact).
+            # Add insertion delta on top so the net force on the port is INSERT_FORCE_N.
+            INSERT_FORCE_N = 8.0
+            bias = self._measure_wrench_bias()
+            ins_force = tuple(bias + ins_axis * INSERT_FORCE_N)
+
             # ── Phase A: spiral search ────────────────────────────────────────
             self.get_logger().info("Spiral search …")
-            spiral_steps  = 200          # ~10 s at 50 ms
-            max_radius    = 0.003        # 3 mm max radius
+            spiral_steps  = 400          # ~20 s at 50 ms
+            max_radius    = 0.005        # 5 mm max radius
             for i in range(spiral_steps):
                 if is_inserted():
                     self.get_logger().info("Spiral: plug seated!")
@@ -902,16 +970,16 @@ class PlugNode(Node):
                           pos[0], pos[1], pos[2],
                           base_quat[0], base_quat[1],
                           base_quat[2], base_quat[3],
-                          30.0, 80.0, force_xyz=(0.0, 0.0, 0.0))
+                          0.0, 30.0, force_xyz=ins_force)
                 ros_sleep()
 
             # ── Phase B: XY wiggle + rotation + push ─────────────────────────
             if not is_inserted():
                 self.get_logger().info("XY wiggle + rotation …")
-                n_cycles  = 6
-                n_steps   = 20
-                xy_amp    = 0.002        # ±2 mm lateral
-                rot_amp   = 2.0          # ±2° around insertion axis
+                n_cycles  = 12
+                n_steps   = 30
+                xy_amp    = 0.004        # ±4 mm lateral
+                rot_amp   = 5.0          # ±5° around insertion axis
                 for cycle in range(n_cycles):
                     if is_inserted():
                         self.get_logger().info("Wiggle: plug seated!")
@@ -933,7 +1001,7 @@ class PlugNode(Node):
                         send_pose(self._pose_pub, self.get_clock(),
                                   pos[0], pos[1], pos[2],
                                   q_out[0], q_out[1], q_out[2], q_out[3],
-                                  0.0, 30.0, force_xyz=(0.0, 0.0, 0.0))
+                                  0.0, 30.0, force_xyz=ins_force)
                         ros_sleep()
 
         self.get_logger().info("Inserted! Waiting 5s to stabilise …")
@@ -995,14 +1063,11 @@ class PlugNode(Node):
                                 "z": r_down[2], "w": r_down[3]},
             }
         else:
-            # Override XY position with YOLO detection (more accurate than TF in real-world)
-            X_OFFSET = +0.01   # systematic YOLO detection offset — shift 5 mm in -X
-            entrance_tf["translation"]["x"] = float(target["pos_base"][0]) + X_OFFSET
+            # Override XY position with YOLO detection (no tip correction here — applied at descent)
+            entrance_tf["translation"]["x"] = float(target["pos_base"][0])
             entrance_tf["translation"]["y"] = float(target["pos_base"][1])
             self.get_logger().info(
                 f"Port: YOLO XY=({target['pos_base'][0]:.3f},{target['pos_base'][1]:.3f}) "
-                f"+ X_OFFSET={X_OFFSET*1000:.0f}mm → "
-                f"({entrance_tf['translation']['x']:.3f},{entrance_tf['translation']['y']:.3f}) "
                 f"TF Z={entrance_tf['translation']['z']:.3f}")
 
         # Find cable plug-tip frame
@@ -1030,7 +1095,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model",           default="runs/detect/yolov8_runs/aic_detect/weights/best.pt")
     ap.add_argument("--conf",            type=float, default=0.5)
-    ap.add_argument("--approach-offset", type=float, default=0.15,
+    ap.add_argument("--approach-offset", type=float, default=0.08,
                     help="Pre-grasp offset above entrance (m)")
     ap.add_argument("--insert-depth",    type=float, default=0.025,
                     help="How far to push past entrance (m)")

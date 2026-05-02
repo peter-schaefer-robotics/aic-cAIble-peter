@@ -83,27 +83,32 @@ class OffsetRecorder(Node):
         # Translational offset: tip position relative to entrance in base_link
         offset_xyz = tip_pos - ent_pos
 
+        # Translational offset in tip frame (rotate base_link offset into tip frame)
+        R_tip  = Rotation.from_quat(tip_quat)
+        offset_xyz_tip = R_tip.inv().apply(offset_xyz)
+
         # Rotational offset: R_entrance^{-1} @ R_tip  (tip in entrance frame)
         R_ent  = Rotation.from_quat(ent_quat)
-        R_tip  = Rotation.from_quat(tip_quat)
         R_rel  = R_ent.inv() * R_tip
         rpy_rel  = R_rel.as_euler("xyz", degrees=True)
         quat_rel = R_rel.as_quat()   # xyzw
 
         record = {
-            "entrance_frame":  ent_frame,
-            "entrance_pos":    ent_pos.tolist(),
-            "entrance_quat":   ent_quat.tolist(),
-            "tip_pos":         tip_pos.tolist(),
-            "tip_quat":        tip_quat.tolist(),
-            "offset_xyz":      offset_xyz.tolist(),
-            "offset_rpy_deg":  rpy_rel.tolist(),
-            "offset_quat":     quat_rel.tolist(),
-            "dist_m":          float(dist),
+            "entrance_frame":    ent_frame,
+            "entrance_pos":      ent_pos.tolist(),
+            "entrance_quat":     ent_quat.tolist(),
+            "tip_pos":           tip_pos.tolist(),
+            "tip_quat":          tip_quat.tolist(),
+            "offset_xyz":        offset_xyz.tolist(),
+            "offset_xyz_tip":    offset_xyz_tip.tolist(),
+            "offset_rpy_deg":    rpy_rel.tolist(),
+            "offset_quat":       quat_rel.tolist(),
+            "dist_m":            float(dist),
         }
         self.get_logger().info(
             f"entrance: {ent_frame}\n"
-            f"  offset XYZ : {offset_xyz.round(4)}  ({np.linalg.norm(offset_xyz)*1000:.1f} mm)\n"
+            f"  offset XYZ (base_link) : {offset_xyz.round(4)}  ({np.linalg.norm(offset_xyz)*1000:.1f} mm)\n"
+            f"  offset XYZ (tip frame) : {offset_xyz_tip.round(4)}\n"
             f"  offset RPY : {rpy_rel.round(2)} deg\n"
             f"  offset quat: {quat_rel.round(5)}"
         )
@@ -111,31 +116,40 @@ class OffsetRecorder(Node):
 
 
 def print_stats(records):
-    xyz     = np.array([r["offset_xyz"]     for r in records])
-    rpys    = np.array([r["offset_rpy_deg"] for r in records])
-    quats   = np.array([r["offset_quat"]    for r in records])
+    xyz      = np.array([r["offset_xyz"]                       for r in records])
+    xyz_tip  = np.array([r.get("offset_xyz_tip", r["offset_xyz"]) for r in records])
+    rpys     = np.array([r["offset_rpy_deg"]                   for r in records])
+    quats    = np.array([r["offset_quat"]                      for r in records])
 
     # Circular mean for quaternions (average on the unit sphere)
     q_mean  = quats.mean(axis=0)
     q_mean /= np.linalg.norm(q_mean)
+    # Prefer positive-w convention
+    if q_mean[3] < 0:
+        q_mean = -q_mean
     rpy_mean = Rotation.from_quat(q_mean).as_euler("xyz", degrees=True)
+
+    xyz_m     = xyz.mean(axis=0)
+    xyz_tip_m = xyz_tip.mean(axis=0)
 
     print(f"\n{'='*60}")
     print(f"  {len(records)} measurements")
     print(f"\n  Translation offset (tip - entrance, in base_link):")
-    print(f"    mean  XYZ : {xyz.mean(axis=0).round(5)}")
+    print(f"    mean  XYZ : {xyz_m.round(5)}")
     print(f"    std   XYZ : {xyz.std(axis=0).round(5)}")
+    print(f"\n  Translation offset (tip - entrance, in tip frame):")
+    print(f"    mean  XYZ : {xyz_tip_m.round(5)}")
+    print(f"    std   XYZ : {xyz_tip.std(axis=0).round(5)}")
     print(f"\n  Rotation offset (R_entrance^-1 @ R_tip, in entrance frame):")
     print(f"    mean  RPY : {rpys.mean(axis=0).round(3)} deg")
     print(f"    std   RPY : {rpys.std(axis=0).round(3)} deg")
 
-    xyz_m = xyz.mean(axis=0)
     print(f"\n  → hardcode in plug_sc_port.py:")
-    print(f"    X_OFFSET   = {xyz_m[0]:.5f}   # {xyz_m[0]*1000:.2f} mm")
-    print(f"    Y_OFFSET   = {xyz_m[1]:.5f}   # {xyz_m[1]*1000:.2f} mm")
-    print(f"    Z_OFFSET   = {xyz_m[2]:.5f}   # {xyz_m[2]*1000:.2f} mm")
-    print(f"    ROT_QUAT   = np.array([{', '.join(f'{v:.6f}' for v in q_mean)}])  # xyzw")
-    print(f"    ROT_RPY_DEG= {rpy_mean.round(3).tolist()}  # roll pitch yaw")
+    print(f"    NOTE: plug_sc_port already applies its active correction while this script runs.")
+    print(f"    The values below are the RESIDUAL — add them to the current constants.")
+    print(f"    _TIP_CORRECTION_TIP_FRAME += np.array([{', '.join(f'{v:.6f}' for v in xyz_tip_m)}])")
+    print(f"    (compose _TIP_CORRECTION_QUAT with the residual quat below)")
+    print(f"    residual quat = np.array([{', '.join(f'{v:.6f}' for v in q_mean)}])  # xyzw")
     print(f"{'='*60}\n")
 
 
