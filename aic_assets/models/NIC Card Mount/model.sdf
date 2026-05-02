@@ -372,6 +372,14 @@
 
     <link name="sfp_port_0_link_entrance">
       <pose relative_to="sfp_port_0_link">0 0 -0.0458 0 0 0</pose>
+      <visual name="sfp_port_0_entrance_visual">
+        <geometry><box><size>0.0134 0.0085 0.001</size></box></geometry>
+        <material>
+          <ambient>0 0 0 0</ambient>
+          <diffuse>0 0 0 0</diffuse>
+          <specular>0 0 0 0</specular>
+        </material>
+      </visual>
     </link>
 
     <joint name="sfp_port_0_joint" type="fixed">
@@ -390,6 +398,14 @@
 
     <link name="sfp_port_1_link_entrance">
       <pose relative_to="sfp_port_1_link">0 0 -0.0458 0 0 0</pose>
+      <visual name="sfp_port_1_entrance_visual">
+        <geometry><box><size>0.0134 0.0085 0.001</size></box></geometry>
+        <material>
+          <ambient>0 0 0 0</ambient>
+          <diffuse>0 0 0 0</diffuse>
+          <specular>0 0 0 0</specular>
+        </material>
+      </visual>
     </link>
 
     <joint name="sfp_port_1_joint" type="fixed">

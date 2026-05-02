@@ -105,6 +105,69 @@
             </clip>
           </camera>
         </sensor>
+
+        <sensor name="${name}_segmentation" type="segmentation_camera">
+          <pose>0 0 0 0 0 0</pose>
+          <update_rate>20.0</update_rate>
+          <topic>/${name}/segmentation</topic>
+          <always_on>true</always_on>
+          <frame_id>${tf_prefix}sensor_link</frame_id>
+          <camera name="${name}_segmentation">
+            <optical_frame_id>${tf_prefix}optical</optical_frame_id>
+            <image>
+              <width>1152</width>
+              <height>1024</height>
+            </image>
+            <horizontal_fov>0.8718</horizontal_fov>
+            <clip>
+              <near>0.07</near>
+              <far>20</far>
+            </clip>
+            <segmentation_type>instance</segmentation_type>
+          </camera>
+        </sensor>
+
+        <sensor name="${name}_bbox" type="boundingbox_camera">
+          <pose>0 0 0 0 0 0</pose>
+          <update_rate>20.0</update_rate>
+          <topic>/${name}/bounding_boxes</topic>
+          <always_on>true</always_on>
+          <frame_id>${tf_prefix}sensor_link</frame_id>
+          <camera name="${name}_bbox">
+            <box_type>visible_2d</box_type>
+            <optical_frame_id>${tf_prefix}optical</optical_frame_id>
+            <image>
+              <width>1152</width>
+              <height>1024</height>
+            </image>
+            <horizontal_fov>0.8718</horizontal_fov>
+            <clip>
+              <near>0.07</near>
+              <far>20</far>
+            </clip>
+          </camera>
+        </sensor>
+
+        <sensor name="${name}_depth" type="depth_camera">
+          <pose>0 0 0 0 0 0</pose>
+          <update_rate>20.0</update_rate>
+          <topic>/${name}/depth</topic>
+          <always_on>true</always_on>
+          <frame_id>${tf_prefix}sensor_link</frame_id>
+          <camera name="${name}_depth">
+            <camera_info_topic>/${name}/depth/camera_info</camera_info_topic>
+            <optical_frame_id>${tf_prefix}optical</optical_frame_id>
+            <image>
+              <width>1152</width>
+              <height>1024</height>
+            </image>
+            <horizontal_fov>0.8718</horizontal_fov>
+            <clip>
+              <near>0.07</near>
+              <far>20</far>
+            </clip>
+          </camera>
+        </sensor>
       </gazebo>
     </xacro:if>
 
