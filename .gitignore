@@ -3,7 +3,6 @@ rgbd_snapshots/
 yolo_dataset/
 runs/
 yolov8_runs/
-*.pt
 *.npy
 depth_output.png
 logo_detection.png
