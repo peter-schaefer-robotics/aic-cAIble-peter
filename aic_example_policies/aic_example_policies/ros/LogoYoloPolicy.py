@@ -1269,23 +1269,21 @@ class LogoYoloPolicy(LogoPortPolicy):
                 target_quat = Rotation.from_euler("ZYX", [nic_yaw, pitch, roll]).as_quat()
                 self._log(f"NIC yaw {np.degrees(nic_yaw):.1f}° → updated quat")
             if task.plug_type == "sc":
-                # SC port can only slide along its rail. The rail runs along
-                # logo-X (both ports have logo-Y ≈ 0 in the static table; they
-                # differ only in logo-X, each centered on its own sc_rail).
-                # So trust YOLO for X (where the port actually moved on the
-                # rail) and override Y + Z with static values where YOLO's
-                # bounding-box-center is biased.
+                # SC rail runs along logo-Y (the static table values are the
+                # nominal rail CENTER, not the spawn position — YOLO Y reflects
+                # the actual rail offset). Keep YOLO Y. Override only X and Z
+                # with static values (port-array axis is fixed by board).
                 T_logo_base   = np.linalg.inv(_mat4(logo_pos, logo_quat))
                 refined_logo  = (T_logo_base @ np.append(refined1, 1.0))[:3]
                 entrance_logo = (T_logo_base @ np.append(entrance_pos, 1.0))[:3]
-                hybrid_logo = np.array([refined_logo[0],    # YOLO  X (rail)
-                                        entrance_logo[1],   # static Y (fixed)
+                hybrid_logo = np.array([entrance_logo[0],   # static X (fixed)
+                                        refined_logo[1],    # YOLO  Y (rail)
                                         entrance_logo[2]])  # static Z (height)
                 hybrid_base = (_mat4(logo_pos, logo_quat)
                                @ np.append(hybrid_logo, 1.0))[:3]
                 hover_pos = np.array([hybrid_base[0], hybrid_base[1],
                                       hover_pos[2]])
-                self._log(f"YOLO #1 SC hybrid (yolo_X + static_Y): "
+                self._log(f"YOLO #1 SC hybrid (static_X + yolo_Y): "
                           f"logo={hybrid_logo.round(4)} "
                           f"base_xy={hover_pos[:2].round(4)}")
             else:
