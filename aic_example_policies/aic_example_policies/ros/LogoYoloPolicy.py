@@ -1358,17 +1358,19 @@ class LogoYoloPolicy(LogoPortPolicy):
             INSERT_SPEED_MPS    = 0.01    # 10 mm/s
             INSERT_DEPTH_M      = 0.35 if task.plug_type == "sc" else 0.16
             DT                  = 0.05
-            F_Z_THRESHOLD_N     = 10.0    # break when |F_z - bias| exceeds this
+            # Absolute |F_z| stop threshold. The FTS is tared before each
+            # trial and the cable weight adds ~1-2 N baseline; real contact
+            # spikes well above this (insertion typically peaks > 20 N).
+            # 15 N stays above transients (cable swing, brief contact) but
+            # well below the 20 N / 1 s scoring penalty band.
+            F_Z_THRESHOLD_N     = 15.0
             step_m  = INSERT_SPEED_MPS * DT
             n_steps = max(1, int(INSERT_DEPTH_M / step_m))
             stiff = np.diag([200.0, 200.0, 200.0, 100.0, 100.0, 100.0]).flatten().tolist()
             damp  = np.diag([200.0, 200.0, 200.0,  30.0,  30.0,  30.0]).flatten().tolist()
             self._log(f"Position insert: {INSERT_SPEED_MPS*1000:.0f} mm/s, "
                       f"{INSERT_DEPTH_M*100:.0f} cm max, "
-                      f"force-stop at {F_Z_THRESHOLD_N:.0f} N")
-
-            # Pre-insertion FTS bias (gravity + cable weight at this pose).
-            wrench_bias = self._measure_wrench_bias(n=20)
+                      f"force-stop at |F_z| > {F_Z_THRESHOLD_N:.0f} N")
 
             for i in range(1, n_steps + 1):
                 pos = hover_pos + np.array([0.0, 0.0, -i * step_m])
@@ -1393,13 +1395,17 @@ class LogoYoloPolicy(LogoPortPolicy):
                 move_robot(motion_update=mu)
                 self.sleep_for(DT)
 
-                # Force-based early stop.
-                if self._wrench_latest is not None:
-                    fz_net = float(self._wrench_latest.force.z) - float(wrench_bias[2])
-                    if abs(fz_net) > F_Z_THRESHOLD_N:
+                # Force-based early stop. Uses the wrench subscription that
+                # already runs on the main executor — no spin_once from this
+                # thread (that deadlocks). If no data has arrived yet, just
+                # keep pushing instead of stopping.
+                w = self._wrench_latest
+                if w is not None:
+                    fz = abs(float(w.force.z))
+                    if fz > F_Z_THRESHOLD_N:
                         self._log(f"Force-stop @ step {i}/{n_steps} "
                                   f"(depth {i*step_m*100:.1f} cm): "
-                                  f"|F_z - bias| = {abs(fz_net):.1f} N "
+                                  f"|F_z| = {fz:.1f} N "
                                   f"> {F_Z_THRESHOLD_N:.0f} N")
                         break
 
