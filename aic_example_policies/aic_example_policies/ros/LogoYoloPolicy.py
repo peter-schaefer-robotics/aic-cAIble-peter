@@ -81,8 +81,8 @@ class LogoYoloPolicy(LogoPortPolicy):
     """LogoPortPolicy + YOLO-based port position refinement after hover."""
 
     def __init__(self, parent_node,
-                 model_path="models/best_richard.pt",
-                 yolo_conf=0.4):
+                 model_path="/home/richard/aic/runs/detect/yolov8_runs/aic_detect/weights/best.pt",
+                 yolo_conf=0.35):
         super().__init__(parent_node)
         self._model_path    = model_path
         self._yolo_conf     = yolo_conf
@@ -282,7 +282,6 @@ class LogoYoloPolicy(LogoPortPolicy):
             if n_px < 10 or not cnts:
                 cv2.putText(vis, "NO LOGO", (10, 55),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
-                cv2.imwrite(f"/tmp/logo_yolo_debug/logo_{cam_name}_attempt{attempt}.png", vis)
                 continue
 
             # pink centroid → direction to move
@@ -335,7 +334,6 @@ class LogoYoloPolicy(LogoPortPolicy):
             cv2.drawContours(vis, parts, -1, (255, 180, 0), 2)
             Mc = cv2.moments(merged.reshape(-1, 1, 2))
             if Mc["m00"] == 0:
-                cv2.imwrite(f"/tmp/logo_yolo_debug/logo_{cam_name}_attempt{attempt}.png", vis)
                 continue
             cent = np.array([Mc["m10"]/Mc["m00"], Mc["m01"]/Mc["m00"]])
             cv2.circle(vis, tuple(cent.astype(int)), 8, (0, 255, 0), -1)
@@ -360,7 +358,6 @@ class LogoYoloPolicy(LogoPortPolicy):
                     if np.linalg.norm(raw) > 1:
                         sd = raw / np.linalg.norm(raw)
             if sd is None:
-                cv2.imwrite(f"/tmp/logo_yolo_debug/logo_{cam_name}_attempt{attempt}.png", vis)
                 continue
 
             # draw slit direction arrow
@@ -371,7 +368,6 @@ class LogoYoloPolicy(LogoPortPolicy):
             xb_slit = R @ ray2(cent + sd * 50) - R @ ray2(cent)
             xb_slit[2] = 0.0
             if np.linalg.norm(xb_slit) < 1e-6:
-                cv2.imwrite(f"/tmp/logo_yolo_debug/logo_{cam_name}_attempt{attempt}.png", vis)
                 continue
             xb_slit /= np.linalg.norm(xb_slit)
             slit_yaw = float(np.arctan2(xb_slit[1], xb_slit[0]))
@@ -420,7 +416,6 @@ class LogoYoloPolicy(LogoPortPolicy):
 
             cv2.putText(vis, f"px={n_px}  complete={complete}", (10, H - 10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-            cv2.imwrite(f"/tmp/logo_yolo_debug/logo_{cam_name}_attempt{attempt}.png", vis)
 
         if not pos_samples:
             return None, None, False, best_move_dir
@@ -696,8 +691,9 @@ class LogoYoloPolicy(LogoPortPolicy):
     # ── YOLO detection ────────────────────────────────────────────────────────
 
     def _detect_ports_yolo(self, obs, cls_id: int,
-                            debug_dir: str = "/tmp/logo_yolo_debug") -> list[dict]:
-        """Run YOLO on all cameras, return detections. Saves debug images to debug_dir."""
+                            debug_dir: str = "/tmp/logo_yolo_debug",
+                            cam_filter: list[str] | None = None) -> list[dict]:
+        """Run YOLO on cameras (all by default), return detections."""
         import os; os.makedirs(debug_dir, exist_ok=True)
         model = self._load_yolo()
         detections = []
@@ -705,7 +701,7 @@ class LogoYoloPolicy(LogoPortPolicy):
         _CLS_NAMES = {_CLS_SC: "sc_port", _CLS_SFP: "sfp_port"}
         _CLS_COLOR = {_CLS_SC: (0, 128, 255), _CLS_SFP: (0, 220, 0)}
 
-        cameras = {
+        all_cameras = {
             "left_camera":   ("left_camera/optical",   obs.left_image,
                                obs.left_camera_info,   getattr(obs, "left_depth",  None)),
             "center_camera": ("center_camera/optical", obs.center_image,
@@ -713,6 +709,8 @@ class LogoYoloPolicy(LogoPortPolicy):
             "right_camera":  ("right_camera/optical",  obs.right_image,
                                obs.right_camera_info,  getattr(obs, "right_depth",  None)),
         }
+        cameras = {k: v for k, v in all_cameras.items()
+                   if cam_filter is None or k in cam_filter}
 
         for cam_name, (optical_frame, img_msg, info_msg, depth_msg) in cameras.items():
             if img_msg is None or info_msg is None:
@@ -757,8 +755,7 @@ class LogoYoloPolicy(LogoPortPolicy):
                         continue
                     x1, y1, x2, y2 = box.xyxy[0].tolist()
                     u = int((x1 + x2) / 2)
-                    # Shift sampling point 80 % down from top (toward bottom of bbox)
-                    v = int(y1 + (y2 - y1) * 0.8)
+                    v = int(y1 + (y2 - y1) * 0.7)
                     cv2.circle(vis, (u, v), 8, (0, 0, 255), -1)
 
                     d = _median_depth(depth_img, u, v) if depth_img is not None else None
@@ -774,7 +771,7 @@ class LogoYoloPolicy(LogoPortPolicy):
                         ray /= np.linalg.norm(ray)
                         rb = T_base_cam[:3, :3] @ ray
                         tb = T_base_cam[:3, 3]
-                        board_z = 0.24 if cls_id == _CLS_SFP else 0.09
+                        board_z = 0.18 if cls_id == _CLS_SFP else 0.03
                         if abs(rb[2]) < 1e-6:
                             continue
                         t_s = (board_z - tb[2]) / rb[2]
@@ -857,12 +854,18 @@ class LogoYoloPolicy(LogoPortPolicy):
             return best_det["pos_base"], None
 
         # SFP: collect all ports near this mount X (both port_0 and port_1 may appear)
-        # Deduplicate: if same physical port seen from multiple cameras, keep highest conf
+        # Deduplicate: prefer center camera, then highest conf
         deduped = {}
         for d in near_x:
             key_yz = (round(d["pos_logo"][1], 2), round(d["pos_logo"][2], 2))
-            if key_yz not in deduped or d["conf"] > deduped[key_yz]["conf"]:
+            if key_yz not in deduped:
                 deduped[key_yz] = d
+            else:
+                existing = deduped[key_yz]
+                # prefer center camera; within same camera prefer higher conf
+                if (d["cam"] == "center_camera" and existing["cam"] != "center_camera") or \
+                   (d["cam"] == existing["cam"] and d["conf"] > existing["conf"]):
+                    deduped[key_yz] = d
         pair = list(deduped.values())
 
         want_port_0 = task.port_name.endswith("sfp_port_0")
@@ -888,22 +891,27 @@ class LogoYoloPolicy(LogoPortPolicy):
                 f"→ picking {'port_0' if want_port_0 else 'port_1'}"
             )
 
-            # Draw the port-to-port line on every debug image where both are visible
+            # Draw port-to-port line + yaw arrow on center camera debug image
             _debug_dir = "/tmp/logo_yolo_debug"
-            for cam in set(d["cam"] for d in [p0, p1]):
-                p0_cam = next((d for d in [p0, p1] if d["cam"] == cam and "pixel" in d), None)
-                p1_cam = next((d for d in [p1, p0] if d["cam"] == cam and "pixel" in d), None)
-                if p0_cam and p1_cam and p0_cam is not p1_cam:
-                    img_path = f"{_debug_dir}/{cam}_yolo.png"
-                    img = cv2.imread(img_path)
-                    if img is not None:
-                        cv2.line(img, p0_cam["pixel"], p1_cam["pixel"], (0, 255, 255), 2)
-                        mid = ((p0_cam["pixel"][0] + p1_cam["pixel"][0]) // 2,
-                               (p0_cam["pixel"][1] + p1_cam["pixel"][1]) // 2)
-                        cv2.putText(img, f"NIC yaw {np.degrees(nic_yaw):.1f}deg",
-                                    (mid[0] - 40, mid[1] - 10),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
-                        cv2.imwrite(img_path, img)
+            img_path = f"{_debug_dir}/center_camera_yolo.png"
+            img = cv2.imread(img_path)
+            if img is not None and "pixel" in p0 and "pixel" in p1:
+                pt0 = p0["pixel"]
+                pt1 = p1["pixel"]
+                # port-to-port line
+                cv2.line(img, pt0, pt1, (0, 255, 255), 3)
+                cv2.circle(img, pt0, 8, (0, 255, 0), -1)   # port_0 green
+                cv2.circle(img, pt1, 8, (0, 0, 255), -1)   # port_1 red
+                # yaw arrow from midpoint
+                mid = ((pt0[0] + pt1[0]) // 2, (pt0[1] + pt1[1]) // 2)
+                arrow_len = 60
+                ax = int(mid[0] + arrow_len * np.cos(nic_yaw))
+                ay = int(mid[1] + arrow_len * np.sin(nic_yaw))
+                cv2.arrowedLine(img, mid, (ax, ay), (0, 165, 255), 3, tipLength=0.3)
+                cv2.putText(img, f"NIC yaw {np.degrees(nic_yaw):.1f}deg",
+                            (mid[0] - 60, mid[1] - 15),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+                cv2.imwrite(img_path, img)
         else:
             # Only one port visible — use it but warn if Y relative to expected is suspicious
             best_det = pair[0]
@@ -1103,16 +1111,24 @@ class LogoYoloPolicy(LogoPortPolicy):
                 self.sleep_for(0.05)
             self._log(f"{label} → {target_pos.round(4)}")
 
-        # ── 4. YOLO #1: nudge +30mm for NIC cards, then detect port ─────────
+        # ── 4. YOLO #1: descend 5 cm closer, nudge for NIC cards, detect port ──
         logo_x_axis = Rotation.from_quat(logo_quat).as_matrix()[:, 0]
         send_feedback("YOLO #1 — searching port …")
+        self._move_closer_z(0.08, move_robot)
+        hover_pos[2] -= 0.08
         if task.plug_type != "sc":
             yolo_view = hover_pos + logo_x_axis * 0.040
-            _move_to(yolo_view, target_quat, "nudge +30mm")
+            _move_to(yolo_view, target_quat, "nudge +40mm")
         self._wait_standstill()
         self._wait_standstill(min_wait=0.5, timeout=5.0)
-        for _ in range(10): obs = get_observation()
-        dets1 = self._detect_ports_yolo(obs, cls_id)
+        obs = get_observation()
+        if task.plug_type == "sc":
+            dets1 = self._detect_ports_yolo(obs, cls_id, cam_filter=["center_camera"])
+            if not dets1:
+                self._log("SC: no center detection — falling back to all cameras")
+                dets1 = self._detect_ports_yolo(obs, cls_id)
+        else:
+            dets1 = self._detect_ports_yolo(obs, cls_id)
         self._log(f"YOLO #1: {len(dets1)} detection(s)")
         refined1, nic_yaw = self._pick_port(dets1, task, logo_pos, logo_quat)
         if refined1 is not None:
@@ -1184,7 +1200,7 @@ class LogoYoloPolicy(LogoPortPolicy):
             send_feedback("Inserting — pushing down …")
             from geometry_msgs.msg import Twist
             INSERT_SPEED_MPS = 0.01    # 10 mm/s
-            INSERT_DEPTH_M   = 0.35 if task.plug_type == "sc" else 0.13  # SC: 35 cm, SFP: 13 cm
+            INSERT_DEPTH_M   = 0.35 if task.plug_type == "sc" else 0.16  # SC: 35 cm, SFP: 16 cm
             DT               = 0.05
             step_m  = INSERT_SPEED_MPS * DT
             n_steps = max(1, int(INSERT_DEPTH_M / step_m))
