@@ -12,6 +12,12 @@ COPY aic_utils /ws_aic/src/aic/aic_utils
 COPY pixi.toml pixi.lock /ws_aic/src/aic/
 COPY pixi_env_setup.sh /ws_aic/src/aic/
 
+# YOLO weights for LogoYoloPolicy. The policy default-resolves to
+# <repo_root>/models/best_richard.pt; we also point AIC_YOLO_MODEL at
+# the absolute path so it works regardless of how the package is loaded.
+COPY models /ws_aic/src/aic/models
+ENV AIC_YOLO_MODEL=/ws_aic/src/aic/models/best_richard.pt
+
 # Add other dependencies
 
 SHELL ["/bin/bash", "-c"]
@@ -57,4 +63,4 @@ exec pixi run --as-is ros2 run aic_model aic_model "$@"
 EOF
 
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["--ros-args", "-p", "policy:=aic_example_policies.ros.CheatCode", "-p", "use_sim_time:=true"]
+CMD ["--ros-args", "-p", "policy:=aic_example_policies.ros.LogoYoloPolicy", "-p", "use_sim_time:=true"]
