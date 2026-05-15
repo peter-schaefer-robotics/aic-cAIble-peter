@@ -1268,8 +1268,28 @@ class LogoYoloPolicy(LogoPortPolicy):
                 _, pitch, roll = Rotation.from_quat(target_quat).as_euler("ZYX")
                 target_quat = Rotation.from_euler("ZYX", [nic_yaw, pitch, roll]).as_quat()
                 self._log(f"NIC yaw {np.degrees(nic_yaw):.1f}° → updated quat")
-            hover_pos = np.array([refined1[0], refined1[1], hover_pos[2]])
-            self._log(f"YOLO #1 port XY: {hover_pos[:2].round(4)}")
+            if task.plug_type == "sc":
+                # SC port can only slide along its rail (logo-Y).
+                # X (port-array axis) is fixed by board geometry, so YOLO X is
+                # just noise/feature-detection-bias and gets overridden with
+                # the static-entrance value. Keep YOLO Y where the port has
+                # actually moved on the rail.
+                T_logo_base   = np.linalg.inv(_mat4(logo_pos, logo_quat))
+                refined_logo  = (T_logo_base @ np.append(refined1, 1.0))[:3]
+                entrance_logo = (T_logo_base @ np.append(entrance_pos, 1.0))[:3]
+                hybrid_logo = np.array([entrance_logo[0],   # static X (fixed)
+                                        refined_logo[1],    # YOLO  Y (rail)
+                                        entrance_logo[2]])  # static Z (height)
+                hybrid_base = (_mat4(logo_pos, logo_quat)
+                               @ np.append(hybrid_logo, 1.0))[:3]
+                hover_pos = np.array([hybrid_base[0], hybrid_base[1],
+                                      hover_pos[2]])
+                self._log(f"YOLO #1 SC hybrid (static_X + yolo_Y): "
+                          f"logo={hybrid_logo.round(4)} "
+                          f"base_xy={hover_pos[:2].round(4)}")
+            else:
+                hover_pos = np.array([refined1[0], refined1[1], hover_pos[2]])
+                self._log(f"YOLO #1 port XY: {hover_pos[:2].round(4)}")
 
         # ── 5. move directly above detected port and hover ────────────────────
         send_feedback("Hovering above port …")
