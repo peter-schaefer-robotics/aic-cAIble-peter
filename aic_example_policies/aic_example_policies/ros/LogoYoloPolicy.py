@@ -12,6 +12,7 @@ Sanity checks:
     port_1 (-Y). Never mix them up.
 """
 
+import os
 import time
 import numpy as np
 import cv2
@@ -50,6 +51,25 @@ _X_TOL   = 0.030   # 30 mm — identifies the correct NIC card mount by X
 _X_PAIR  = 0.035   # 35 mm — window to collect both SFP ports of the same mount
 
 
+def _default_yolo_model_path() -> str:
+    """Resolve the YOLO weights path.
+
+    Precedence:
+      1. ``AIC_YOLO_MODEL`` env var (full path).
+      2. ``<repo_root>/models/best_richard.pt`` resolved relative to this file.
+      3. Legacy hardcoded path (kept as a last-resort fallback).
+    """
+    env_path = os.environ.get("AIC_YOLO_MODEL")
+    if env_path:
+        return env_path
+    here = os.path.dirname(os.path.abspath(__file__))
+    repo_root = os.path.abspath(os.path.join(here, "..", "..", ".."))
+    candidate = os.path.join(repo_root, "models", "best_richard.pt")
+    if os.path.isfile(candidate):
+        return candidate
+    return "/home/richard/aic/runs/detect/yolov8_runs/aic_detect/weights/best.pt"
+
+
 def _mat4(pos, quat):
     T = np.eye(4)
     T[:3, 3]  = pos
@@ -81,10 +101,10 @@ class LogoYoloPolicy(LogoPortPolicy):
     """LogoPortPolicy + YOLO-based port position refinement after hover."""
 
     def __init__(self, parent_node,
-                 model_path="/home/richard/aic/runs/detect/yolov8_runs/aic_detect/weights/best.pt",
+                 model_path=None,
                  yolo_conf=0.35):
         super().__init__(parent_node)
-        self._model_path    = model_path
+        self._model_path    = model_path or _default_yolo_model_path()
         self._yolo_conf     = yolo_conf
         self._yolo_model    = None
         self._wrench_latest = None

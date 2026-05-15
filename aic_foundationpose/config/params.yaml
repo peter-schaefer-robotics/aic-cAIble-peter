@@ -5,11 +5,14 @@ foundationpose_node:
 
     # Absolute path to the converted NIC Card OBJ mesh
     # Run: ros2 run aic_foundationpose convert_nic_mesh  to generate it
-    mesh_path: /home/richard/aic/aic_foundationpose/meshes/nic_card.obj
+    # NOTE: ROS YAML does not expand ~ or env vars — keep this absolute.
+    # Default matches the Lambda Labs convention from initial_setup.sh
+    # (repo cloned at ~ai_muenchen/aic). Override on other hosts.
+    mesh_path: /home/ubuntu/ai_muenchen/aic/aic_foundationpose/meshes/nic_card.obj
 
     # Absolute path to the cloned FoundationPose repository
     # git clone https://github.com/NVlabs/FoundationPose.git ~/FoundationPose
-    foundationpose_dir: /home/richard/FoundationPose
+    foundationpose_dir: /home/ubuntu/FoundationPose
 
     # Depth-Anything-V2 Metric model (HuggingFace model ID)
     # Alternatives: Depth-Anything-V2-Metric-Indoor-Small-hf  (faster, less accurate)
