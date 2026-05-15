@@ -14,6 +14,8 @@ evdev = ">=1.9.2,<2"
 isort = "==5.13.2"                                                                     # version bundled by the vscode extension
 json5 = ">=0.13.0,<0.14"                                                               # version bundled by the vscode extension
 numpy = "<2.3.0"
+py-opencv = ">=4.9,<5"
+scipy = ">=1.13,<2"
 packaging = ">=24.2,<26.0"                                                             # required by lerobot==0.4.3
 pyright = "==1.1.408"
 ros-kilted-aic-control-interfaces = { path = "aic_interfaces/aic_control_interfaces" }
@@ -38,6 +40,7 @@ setuptools = ">=71.0.0,<81.0.0"                                                 
 
 [pypi-dependencies]
 huggingface-hub = { version = "~=1.7" }
+ultralytics = ">=8.0,<9"
 lerobot = "==0.5.1"
 lerobot_robot_ros = { git = "https://github.com/koonpeng/lerobot-ros", rev = "87708d0ae14a724bca78f8ae9d55448332509a57", subdirectory = "lerobot_robot_ros" }
 lerobot_teleoperator_devices = { git = "https://github.com/koonpeng/lerobot-ros", rev = "87708d0ae14a724bca78f8ae9d55448332509a57", subdirectory = "lerobot_teleoperator_devices" }
