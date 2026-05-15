@@ -688,6 +688,105 @@ class LogoYoloPolicy(LogoPortPolicy):
             self._log(f"YOLO loaded: {self._model_path}")
         return self._yolo_model
 
+    # ── SC port yaw from edge detection ──────────────────────────────────────
+
+    _SC_BLUE_LOW  = np.array([ 85,  60,  60])
+    _SC_BLUE_HIGH = np.array([135, 255, 255])
+
+    def _sc_edge_yaw(self, obs, det: dict) -> float | None:
+        """Estimate SC port yaw from Hough lines on the blue port body.
+
+        det must have 'pixel' (u, v) and 'cam' keys from _detect_ports_yolo.
+        Returns angle in radians (base_link XY convention) or None.
+        """
+        _CAM_MAP = {
+            "left_camera":   obs.left_image,
+            "center_camera": obs.center_image,
+            "right_camera":  obs.right_image,
+        }
+        img_msg = _CAM_MAP.get(det["cam"])
+        if img_msg is None:
+            return None
+        rgb = _ros_img_to_numpy(img_msg)
+        if rgb is None:
+            return None
+        bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+
+        # Crop ROI around the detection pixel (±40 px)
+        u, v = det["pixel"]
+        H, W = bgr.shape[:2]
+        r = 40
+        x1, y1 = max(0, u - r), max(0, v - r)
+        x2, y2 = min(W, u + r), min(H, v + r)
+        roi = bgr[y1:y2, x1:x2]
+        if roi.size == 0:
+            return None
+
+        # Segment blue body
+        hsv       = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+        blue_mask = cv2.inRange(hsv, self._SC_BLUE_LOW, self._SC_BLUE_HIGH)
+        blue_mask = cv2.morphologyEx(blue_mask, cv2.MORPH_CLOSE,
+                                     np.ones((7, 7), np.uint8))
+
+        # Canny edges inside blue mask
+        gray  = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+        edges = cv2.Canny(gray, 30, 100)
+        edges = cv2.bitwise_and(edges, blue_mask)
+
+        lines = cv2.HoughLinesP(edges, 1, np.pi / 180, threshold=10,
+                                minLineLength=5, maxLineGap=5)
+        if lines is None:
+            self._log("SC edge yaw: no Hough lines found")
+            return None
+
+        # Dominant angle via 1° histogram
+        angles = [(np.degrees(np.arctan2(y2 - y1, x2 - x1)) % 180)
+                  for x1, y1, x2, y2 in lines[:, 0]]
+        hist, bins = np.histogram(angles, bins=180, range=(0, 180))
+        dominant_deg = float(bins[int(np.argmax(hist))] + 0.5)
+
+        # Save debug image
+        import os; os.makedirs("/tmp/logo_yolo_debug", exist_ok=True)
+        vis = roi.copy()
+        vis[blue_mask == 0] = (vis[blue_mask == 0] * 0.3).astype(np.uint8)
+        for x1, y1, x2, y2 in lines[:, 0]:
+            cv2.line(vis, (x1, y1), (x2, y2), (0, 255, 255), 1)
+        rh, rw = roi.shape[:2]
+        cx, cy = rw // 2, rh // 2
+        rad = np.radians(dominant_deg)
+        dx, dy = int(np.cos(rad) * rw * 0.4), int(np.sin(rad) * rh * 0.4)
+        cv2.arrowedLine(vis, (cx - dx, cy - dy), (cx + dx, cy + dy),
+                        (0, 80, 255), 2, tipLength=0.2)
+        cv2.imwrite(f"/tmp/logo_yolo_debug/sc_edge_{det['cam']}.png", vis)
+
+        self._log(f"SC edge yaw: dominant={dominant_deg:.1f}° (image frame)")
+
+        # Convert image-frame angle to base_link yaw:
+        # The dominant_deg is in pixel coords (x right, y down).
+        # We need to project it through the camera rotation to base_link XY.
+        try:
+            cam_frame = det["cam"].replace("_camera", "_camera/optical")
+            tf = self._parent_node._tf_buffer.lookup_transform(
+                "base_link", cam_frame, __import__('rclpy.time', fromlist=['Time']).Time())
+            R = Rotation.from_quat([
+                tf.transform.rotation.x, tf.transform.rotation.y,
+                tf.transform.rotation.z, tf.transform.rotation.w,
+            ]).as_matrix()
+            # Image direction vector
+            img_dir = np.array([np.cos(np.radians(dominant_deg)),
+                                 np.sin(np.radians(dominant_deg)), 0.0])
+            base_dir = R @ img_dir
+            base_dir[2] = 0.0
+            n = np.linalg.norm(base_dir[:2])
+            if n < 1e-6:
+                return None
+            yaw_rad = float(np.arctan2(base_dir[1], base_dir[0]))
+            self._log(f"SC edge yaw → base_link: {np.degrees(yaw_rad):.1f}°")
+            return yaw_rad
+        except Exception as e:
+            self._log(f"SC edge yaw TF failed: {e}")
+            return None
+
     # ── YOLO detection ────────────────────────────────────────────────────────
 
     def _detect_ports_yolo(self, obs, cls_id: int,
@@ -1132,7 +1231,20 @@ class LogoYoloPolicy(LogoPortPolicy):
         self._log(f"YOLO #1: {len(dets1)} detection(s)")
         refined1, nic_yaw = self._pick_port(dets1, task, logo_pos, logo_quat)
         if refined1 is not None:
-            if nic_yaw is not None and task.plug_type != "sc":
+            if task.plug_type == "sc":
+                # Use edge detection to refine SC port yaw
+                best_det = next((d for d in dets1 if d.get("pos_base") is not None
+                                 and np.allclose(d["pos_base"], refined1, atol=0.01)), None)
+                if best_det is None and dets1:
+                    best_det = dets1[0]
+                if best_det is not None:
+                    edge_yaw = self._sc_edge_yaw(obs, best_det)
+                    if edge_yaw is not None:
+                        _, pitch, roll = Rotation.from_quat(target_quat).as_euler("ZYX")
+                        target_quat = Rotation.from_euler(
+                            "ZYX", [edge_yaw, pitch, roll]).as_quat()
+                        self._log(f"SC edge yaw {np.degrees(edge_yaw):.1f}° → updated quat")
+            elif nic_yaw is not None:
                 _, pitch, roll = Rotation.from_quat(target_quat).as_euler("ZYX")
                 target_quat = Rotation.from_euler("ZYX", [nic_yaw, pitch, roll]).as_quat()
                 self._log(f"NIC yaw {np.degrees(nic_yaw):.1f}° → updated quat")
