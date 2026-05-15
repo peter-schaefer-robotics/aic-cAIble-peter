@@ -1213,8 +1213,8 @@ class LogoYoloPolicy(LogoPortPolicy):
         # ── 4. YOLO #1: descend 5 cm closer, nudge for NIC cards, detect port ──
         logo_x_axis = Rotation.from_quat(logo_quat).as_matrix()[:, 0]
         send_feedback("YOLO #1 — searching port …")
-        self._move_closer_z(0.08, move_robot)
-        hover_pos[2] -= 0.08
+        self._move_closer_z(0.06, move_robot)
+        hover_pos[2] -= 0.06
         if task.plug_type != "sc":
             yolo_view = hover_pos + logo_x_axis * 0.040
             _move_to(yolo_view, target_quat, "nudge +40mm")
