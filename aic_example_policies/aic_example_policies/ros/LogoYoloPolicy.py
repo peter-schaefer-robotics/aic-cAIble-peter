@@ -1347,18 +1347,29 @@ class LogoYoloPolicy(LogoPortPolicy):
             self._wait_standstill(min_wait=0.5, timeout=5.0)
 
 
-            # Drive plug straight down with position commands — no force/wrench
+            # Drive plug straight down with position commands.
+            # Stops early when the FTS z-force exceeds F_Z_THRESHOLD_N over
+            # the pre-insertion bias — that's the signature of the plug being
+            # seated (reaction force jumps). Avoids the penalty for >20 N for
+            # >1 s, and fixes "5 cm partial" outcomes where the plug bottomed
+            # out long before the commanded depth was reached.
             send_feedback("Inserting — pushing down …")
             from geometry_msgs.msg import Twist
-            INSERT_SPEED_MPS = 0.01    # 10 mm/s
-            INSERT_DEPTH_M   = 0.35 if task.plug_type == "sc" else 0.16  # SC: 35 cm, SFP: 16 cm
-            DT               = 0.05
+            INSERT_SPEED_MPS    = 0.01    # 10 mm/s
+            INSERT_DEPTH_M      = 0.35 if task.plug_type == "sc" else 0.16
+            DT                  = 0.05
+            F_Z_THRESHOLD_N     = 10.0    # break when |F_z - bias| exceeds this
             step_m  = INSERT_SPEED_MPS * DT
             n_steps = max(1, int(INSERT_DEPTH_M / step_m))
             stiff = np.diag([200.0, 200.0, 200.0, 100.0, 100.0, 100.0]).flatten().tolist()
             damp  = np.diag([200.0, 200.0, 200.0,  30.0,  30.0,  30.0]).flatten().tolist()
             self._log(f"Position insert: {INSERT_SPEED_MPS*1000:.0f} mm/s, "
-                      f"{INSERT_DEPTH_M*100:.0f} cm max")
+                      f"{INSERT_DEPTH_M*100:.0f} cm max, "
+                      f"force-stop at {F_Z_THRESHOLD_N:.0f} N")
+
+            # Pre-insertion FTS bias (gravity + cable weight at this pose).
+            wrench_bias = self._measure_wrench_bias(n=20)
+
             for i in range(1, n_steps + 1):
                 pos = hover_pos + np.array([0.0, 0.0, -i * step_m])
                 mu = MotionUpdate(
@@ -1381,6 +1392,16 @@ class LogoYoloPolicy(LogoPortPolicy):
                 )
                 move_robot(motion_update=mu)
                 self.sleep_for(DT)
+
+                # Force-based early stop.
+                if self._wrench_latest is not None:
+                    fz_net = float(self._wrench_latest.force.z) - float(wrench_bias[2])
+                    if abs(fz_net) > F_Z_THRESHOLD_N:
+                        self._log(f"Force-stop @ step {i}/{n_steps} "
+                                  f"(depth {i*step_m*100:.1f} cm): "
+                                  f"|F_z - bias| = {abs(fz_net):.1f} N "
+                                  f"> {F_Z_THRESHOLD_N:.0f} N")
+                        break
 
         self._log("Waiting 5 s for connector to stabilise …")
         send_feedback("Inserted — stabilising …")
