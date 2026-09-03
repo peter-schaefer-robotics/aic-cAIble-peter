@@ -1,7 +1,7 @@
 FROM docker.io/library/ros:kilted-ros-core AS build
 
 # Install pixi
-RUN apt update && apt install -y git && curl -fsSL https://pixi.sh/install.sh | bash
+RUN apt update && apt install -y git && curl -fsSL https://pixi.sh/install.sh | PIXI_VERSION=0.67.2 bash
 ENV PATH="/root/.pixi/bin:$PATH"
 
 # Add base dependencies
@@ -31,7 +31,7 @@ COPY docker/aic_eval/aic_zenoh_config.json5 \
 
 SHELL ["/bin/bash", "-c"]
 RUN --mount=type=cache,target=/root/.cache/rattler/cache --mount=type=cache,target=/ws_aic/src/aic/.pixi/build \
-    cd /ws_aic/src/aic && pixi install --locked
+    cd /ws_aic/src/aic && UV_HTTP_TIMEOUT=300 pixi install --locked
 
 WORKDIR /ws_aic/src/aic
 COPY --chmod=755 <<"EOF" /entrypoint.sh
@@ -72,4 +72,4 @@ exec pixi run --as-is ros2 run aic_model aic_model "$@"
 EOF
 
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["--ros-args", "-p", "policy:=aic_example_policies.ros.LogoYoloPolicy", "-p", "use_sim_time:=true"]
+CMD ["--ros-args", "-p", "policy:=aic_model.LogoYoloPolicy", "-p", "use_sim_time:=true"]
