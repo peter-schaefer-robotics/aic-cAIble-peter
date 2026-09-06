@@ -1,4 +1,21 @@
-# python artifacts
+# ── large data / training artifacts ──────────────────────────────────────────
+rgbd_snapshots/
+yolo_dataset/
+runs/
+yolov8_runs/
+*.npy
+depth_output.png
+logo_detection.png
+logo_understanding.png
+logo_pose.json
+
+# ── ROS build artifacts ───────────────────────────────────────────────────────
+install/
+log/
+aic_interfaces/install/
+aic_interfaces/log/
+
+# ── python artifacts
 __pycache__/
 *.egg-info/
 build/

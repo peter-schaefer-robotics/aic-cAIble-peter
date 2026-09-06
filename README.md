@@ -5,6 +5,12 @@
 
 ![](../media/aic_banner.png)
 
+## Our Solution
+
+> **[LogoYoloPolicy](./aic_example_policies/LOGOYOLO_README.md)** — logo-based board localisation + YOLO port detection for autonomous SFP and SC cable insertion. Start here.
+
+---
+
 The **AI for Industry Challenge** is an open competition for developers and roboticists aimed at solving some of the hardest, high-impact problems in robotics and manufacturing.
 
 This repository contains the official toolkit to help participants start developing their solutions. For registration details, official rules, and FAQs, please visit the [AI for Industry Challenge event page](https://www.intrinsic.ai/events/ai-for-industry-challenge).

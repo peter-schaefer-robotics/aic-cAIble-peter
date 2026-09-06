@@ -1,7 +1,7 @@
 <?xml version="1.0" ?>
 <robot xmlns:xacro="http://wiki.ros.org/xacro">
 
-  <xacro:macro name="sc_port" params="prefix pose">
+  <xacro:macro name="sc_port" params="prefix pose bbox_label:=20">
     <gazebo>
       <include>
         <name>${prefix}</name>
@@ -14,6 +14,9 @@
           <time>1</time>
           <namespace>${prefix}/sc_port_base</namespace>
           <enabled>true</enabled>
+        </plugin>
+        <plugin filename="gz-sim-label-system" name="gz::sim::systems::Label">
+          <label>${bbox_label}</label>
         </plugin>
       </include>
     </gazebo>

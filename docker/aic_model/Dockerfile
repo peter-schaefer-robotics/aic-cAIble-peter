@@ -12,6 +12,21 @@ COPY aic_utils /ws_aic/src/aic/aic_utils
 COPY pixi.toml pixi.lock /ws_aic/src/aic/
 COPY pixi_env_setup.sh /ws_aic/src/aic/
 
+# YOLO weights for LogoYoloPolicy. The policy default-resolves to
+# <repo_root>/models/best_richard.pt; we also point AIC_YOLO_MODEL at
+# the absolute path so it works regardless of how the package is loaded.
+COPY models /ws_aic/src/aic/models
+ENV AIC_YOLO_MODEL=/ws_aic/src/aic/models/best_richard.pt
+
+# Zenoh session config: needed so the model's ROS node is actually
+# discoverable from the eval container. The defaults are missing
+# `open.return_conditions` (connect_scouted/declares), which means
+# the session opens before scouting completes and the lifecycle node
+# never appears in the engine's discovery. pixi_env_setup.sh resolves
+# ZENOH_SESSION_CONFIG_URI from this path at activation time.
+COPY docker/aic_eval/aic_zenoh_config.json5 \
+     /ws_aic/src/aic/docker/aic_eval/aic_zenoh_config.json5
+
 # Add other dependencies
 
 SHELL ["/bin/bash", "-c"]

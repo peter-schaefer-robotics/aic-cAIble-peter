@@ -1,7 +1,7 @@
 <?xml version="1.0" ?>
 <robot xmlns:xacro="http://wiki.ros.org/xacro">
 
-  <xacro:macro name="nic_card_mount" params="prefix pose">
+  <xacro:macro name="nic_card_mount" params="prefix pose bbox_label:=10">
     <gazebo>
       <include>
         <name>${prefix}</name>
@@ -24,6 +24,9 @@
           <namespace>${prefix}/sfp_port_1</namespace>
           <enabled>true</enabled>
           <collision>contact_collision_02</collision>
+        </plugin>
+        <plugin filename="gz-sim-label-system" name="gz::sim::systems::Label">
+          <label>${bbox_label}</label>
         </plugin>
 
       </include>
