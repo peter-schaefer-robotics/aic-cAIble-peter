@@ -1,15 +1,31 @@
+# Team cAIble: AI for Industry Challenge
+
+We are Team cAIble, competing in Intrinsic's [AI for Industry Challenge](https://www.intrinsic.ai/events/ai-for-industry-challenge). The task: a robot arm has to find the right port on a task board and plug in an SFP or SC cable autonomously, in a ROS 2 and Gazebo simulation, using its cameras and its wrist force/torque sensor.
+
+This repository contains the official challenge toolkit plus our solution on top of it. Our policy is **[LogoYoloPolicy](./aic_example_policies/LOGOYOLO_README.md)**. Start there.
+
+**What we built**
+
+- **Board localization:** we find the task board from its printed logo, first with the center camera, then with all three cameras until two of them agree on the board's yaw within 2°, plus a 4.5° systematic yaw correction.
+- **Port detection:** we trained our own YOLOv8 models to detect SC and SFP ports and reject detections that do not match the expected board geometry (±30 mm).
+- **Collision-aware approach:** a two-phase hover that first moves above the port and then descends, so the cable does not snag on the NIC cards.
+- **Compliant insertion:** we insert under impedance control (200 N/m, 200 Ns/m) at 10 mm/s and stop based on the force measured along the insertion axis by the wrist force/torque sensor.
+- **Hybrid SC targeting:** a static board-frame estimate along one axis combined with YOLO along the rail axis.
+- **Submission container:** a Docker image with our YOLO weights, the zenoh session config, and our policy as the default.
+- **Earlier experiments** in [`aic_foundationpose`](./aic_foundationpose/README.md): SC port detection from YOLO plus depth, insertion with a small wiggle to seat the plug, and data collection and training utilities.
+
+Our trained detection models are in [`models/`](./models).
+
+*Everything below this line is the official toolkit README by Intrinsic, from [intrinsic-dev/aic](https://github.com/intrinsic-dev/aic).*
+
+---
+
 # AI for Industry Challenge Toolkit
 
 [![build](https://github.com/intrinsic-dev/aic/actions/workflows/build.yml/badge.svg)](https://github.com/intrinsic-dev/aic/actions/workflows/build.yml)
 [![style](https://github.com/intrinsic-dev/aic/actions/workflows/style.yml/badge.svg)](https://github.com/intrinsic-dev/aic/actions/workflows/style.yml)
 
 ![](../media/aic_banner.png)
-
-## Our Solution
-
-> **[LogoYoloPolicy](./aic_example_policies/LOGOYOLO_README.md)** — logo-based board localisation + YOLO port detection for autonomous SFP and SC cable insertion. Start here.
-
----
 
 The **AI for Industry Challenge** is an open competition for developers and roboticists aimed at solving some of the hardest, high-impact problems in robotics and manufacturing.
 
